@@ -18,7 +18,7 @@ func main() {
 		Addr:    ":8080",
 	}
 
-	log.Println("Server is listening on port: 8080")
+	log.Println("[Info] Server is listening on port: 8080")
 
 	log.Fatal(server.ListenAndServe())
 }

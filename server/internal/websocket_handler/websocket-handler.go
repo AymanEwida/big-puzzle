@@ -1,7 +1,6 @@
 package websocket_handler
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -10,6 +9,7 @@ import (
 
 type WebsocketHandler struct {
 	upgrader websocket.Upgrader
+	hub      *Hub
 }
 
 func NewWebSocketHandler() WebsocketHandler {
@@ -21,6 +21,8 @@ func NewWebSocketHandler() WebsocketHandler {
 				return origin == "http://localhost:3000"
 			},
 		},
+
+		hub: NewHub(),
 	}
 }
 
@@ -32,21 +34,10 @@ func (wh WebsocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for {
-		messageType, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("[Error] %v\n", err)
+	client := NewClient(conn)
 
-			return
-		}
+	wh.hub.Register(client)
 
-		fmt.Printf("server received: %s\n", message)
-
-		err = conn.WriteMessage(messageType, message)
-		if err != nil {
-			log.Printf("[Error] %v\n", err)
-
-			return
-		}
-	}
+	go client.WritePump()
+	client.ReadPump(wh.hub)
 }
