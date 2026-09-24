@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// TODO: test websocket_handler package
 type WebsocketHandler struct {
 	upgrader websocket.Upgrader
 	hub      *Hub
@@ -29,7 +30,7 @@ func NewWebSocketHandler() WebsocketHandler {
 func (wh WebsocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	conn, err := wh.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("[Error] %v\n", err)
+		log.Printf("[Connection Error] %v\n", err)
 
 		return
 	}
