@@ -34,14 +34,21 @@ func NewClient(conn *websocket.Conn) *Client {
 func (c *Client) ReadPump(h *Hub) {
 	defer func() {
 		h.unregister <- c
-		c.conn.Close()
+		err := c.conn.Close()
+		if err != nil {
+			return
+		}
 	}()
 
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	err := c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	if err != nil {
+		log.Printf("[Connection Error] %v", err)
+
+		return
+	}
 
 	c.conn.SetPingHandler(func(_ string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
+		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
 	for {

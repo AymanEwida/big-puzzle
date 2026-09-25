@@ -42,7 +42,7 @@ func (h *Hub) Run() {
 					if client.pendingMessagesa.IsEmpty() {
 						client.send <- sendMessage
 					} else {
-						for len(client.send) < cap(client.send) && client.pendingMessagesa.IsEmpty() {
+						for len(client.send) < cap(client.send) && !client.pendingMessagesa.IsEmpty() {
 							pendingMessage, _ := client.pendingMessagesa.Dequeue()
 
 							client.send <- pendingMessage
