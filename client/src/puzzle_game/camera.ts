@@ -1,5 +1,10 @@
 import type { Position, Size } from "../types/game_types";
 
+interface CameraBounds {
+  screenSize: Size;
+  worldSize: Size;
+}
+
 class Camera {
   private position: Position;
   private center: Position;
@@ -31,11 +36,48 @@ class Camera {
   }
 
   setCenter(newCenter: Position) {
-    this.center = newCenter;
+    this.center = { ...newCenter };
   }
 
-  update({ screenSize, worldSize }: { screenSize: Size; worldSize: Size }) {
-    this.zoom += (this.targetZoom - this.zoom) * this.zoomSpeed;
+  getZoom() {
+    return this.zoom;
+  }
+
+  panBy(delta: Position, bounds: CameraBounds) {
+    this.center.x += delta.x / this.zoom;
+    this.center.y += delta.y / this.zoom;
+
+    this.clampCenter(bounds);
+  }
+
+  private clampCenter({ screenSize, worldSize }: CameraBounds) {
+    const halfWidth = screenSize.width / this.zoom / 2;
+    const halfHeight = screenSize.height / this.zoom / 2;
+
+    this.center.x = Math.max(
+      halfWidth,
+      Math.min(this.center.x, Math.max(halfWidth, worldSize.width - halfWidth)),
+    );
+
+    this.center.y = Math.max(
+      halfHeight,
+      Math.min(
+        this.center.y,
+        Math.max(halfHeight, worldSize.height - halfHeight),
+      ),
+    );
+  }
+
+  update({ screenSize, worldSize }: CameraBounds, deltaSeconds: number) {
+    const zoomAlpha = 1 - Math.exp(-this.zoomSpeed * deltaSeconds);
+    const positionAlpha = 1 - Math.exp(-this.lerpSpeed * deltaSeconds);
+
+    this.zoom += (this.targetZoom - this.zoom) * zoomAlpha;
+    if (Math.abs(this.targetZoom - this.zoom) < 0.0001) {
+      this.zoom = this.targetZoom;
+    }
+
+    this.clampCenter({ screenSize, worldSize });
 
     const visibleSize: Size = {
       width: screenSize.width / this.zoom,
@@ -47,14 +89,28 @@ class Camera {
       y: this.center.y - visibleSize.height / 2,
     };
 
-    this.position.x = (target.x - this.position.x) * this.lerpSpeed;
-    this.position.y = (target.y - this.position.y) * this.lerpSpeed;
+    this.position.x += (target.x - this.position.x) * positionAlpha;
+    this.position.y += (target.y - this.position.y) * positionAlpha;
 
-    const maxX = worldSize.width - visibleSize.width;
-    const maxY = worldSize.height - visibleSize.height;
+    const maxX = Math.max(0, worldSize.width - visibleSize.width);
+    const maxY = Math.max(0, worldSize.height - visibleSize.height);
 
     this.position.x = Math.max(0, Math.min(this.position.x, maxX));
     this.position.y = Math.max(0, Math.min(this.position.y, maxY));
+
+    if (Math.abs(target.x - this.position.x) * this.zoom < 0.01) {
+      this.position.x = target.x;
+    }
+
+    if (Math.abs(target.y - this.position.y) * this.zoom < 0.01) {
+      this.position.y = target.y;
+    }
+
+    return (
+      this.position.x !== target.x ||
+      this.position.y !== target.y ||
+      this.zoom !== this.targetZoom
+    );
   }
 }
 

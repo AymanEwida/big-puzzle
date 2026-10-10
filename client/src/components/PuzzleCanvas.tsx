@@ -1,34 +1,25 @@
 import { useEffect, useRef } from "react";
-import useWindowSize from "../hooks/useWindowSize";
 import CanvasRender from "../puzzle_game/canvas_render";
 
 function PuzzleCanvas() {
-  const windowSize = useWindowSize();
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<CanvasRender | null>(null);
 
   useEffect(() => {
     if (canvasRef.current === null) {
       return;
     }
 
-    rendererRef.current = new CanvasRender(canvasRef.current);
-    rendererRef.current.render();
+    const renderer = new CanvasRender(canvasRef.current);
 
     return () => {
-      rendererRef.current?.destroy();
-      rendererRef.current = null;
+      renderer.destroy();
     };
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={windowSize.width - 10}
-      height={windowSize.height - 10}
-      className="border-5 border-bold border-red-300"
-    />
+    <div className="h-dvh w-full border-5 border-red-300">
+      <canvas ref={canvasRef} className="block h-full w-full touch-none" />
+    </div>
   );
 }
 
