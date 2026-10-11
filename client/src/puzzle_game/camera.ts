@@ -47,6 +47,30 @@ class Camera {
     this.zoomAnchor = null;
   }
 
+  // for test only
+  _setTargetZoom(newVal: number) {
+    this.targetZoom = newVal;
+  }
+
+  getZoomAnchor() {
+    return this.zoomAnchor;
+  }
+
+  // for test only
+  _setZoomAnchor(anchorScreen: Position | null) {
+    if (anchorScreen === null) {
+      this.zoomAnchor = null;
+    } else {
+      this.zoomAnchor = {
+        screen: anchorScreen,
+        world: {
+          x: this.position.x + anchorScreen.x / this.zoom,
+          y: this.position.y + anchorScreen.y / this.zoom,
+        },
+      };
+    }
+  }
+
   getPosition() {
     return this.position;
   }
@@ -63,7 +87,7 @@ class Camera {
   private syncCenter(screenSize: Size) {
     this.center = {
       x: this.position.x + screenSize.width / (2 * this.zoom),
-      y: this.position.x + screenSize.height / (2 * this.zoom),
+      y: this.position.y + screenSize.height / (2 * this.zoom),
     };
   }
 
@@ -83,8 +107,6 @@ class Camera {
       Math.min(this.maxZoom, this.targetZoom * factor),
     );
 
-    console.log("next zoom", nextTargetZoom, "zoom", this.targetZoom);
-
     if (nextTargetZoom === this.targetZoom) {
       return;
     }
@@ -102,12 +124,10 @@ class Camera {
   }
 
   panBy(delta: Position, bounds: CameraBounds) {
-    console.log("here panning");
-
     if (this.zoomAnchor !== null) {
       this.resetZoom();
 
-      // this.clampPosition(bounds);
+      this.clampPosition(bounds);
 
       this.syncCenter(bounds.screenSize);
     }
@@ -115,7 +135,7 @@ class Camera {
     this.center.x += delta.x / this.zoom;
     this.center.y += delta.y / this.zoom;
 
-    // this.clampCenter(bounds);
+    this.clampCenter(bounds);
   }
 
   private clampCenter({ screenSize, worldSize }: CameraBounds) {
@@ -160,20 +180,16 @@ class Camera {
         this.zoom = this.targetZoom;
       }
 
-      console.log("actual zoom", this.zoom);
-
       const { world, screen } = this.zoomAnchor;
 
       this.position.x = world.x - screen.x / this.zoom;
       this.position.y = world.y - screen.y / this.zoom;
 
-      // this.clampPosition({ screenSize, worldSize });
+      this.clampPosition({ screenSize, worldSize });
 
-      // this.clampCenter({ screenSize, worldSize });
+      this.clampCenter({ screenSize, worldSize });
 
       this.syncCenter(screenSize);
-
-      console.log("position", this.position, "center", this.center);
 
       const moving = this.zoom !== this.targetZoom;
 
@@ -184,7 +200,7 @@ class Camera {
       return moving;
     }
 
-    // this.clampCenter({ screenSize, worldSize });
+    this.clampCenter({ screenSize, worldSize });
 
     const visibleSize: Size = {
       width: screenSize.width / this.zoom,
@@ -201,7 +217,7 @@ class Camera {
     this.position.x += (target.x - this.position.x) * alpha;
     this.position.y += (target.y - this.position.y) * alpha;
 
-    // this.clampPosition({ screenSize, worldSize });
+    this.clampPosition({ screenSize, worldSize });
 
     if (Math.abs(target.x - this.position.x) * this.zoom < 0.01) {
       this.position.x = target.x;

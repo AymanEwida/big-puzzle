@@ -240,6 +240,7 @@ class CanvasRender {
     ctx.stroke();
 
     ctx.fillStyle = "red";
+    ctx.fillRect(500, 500, 200, 200);
     ctx.fillRect(5000, 5000, 200, 200);
 
     ctx.restore();

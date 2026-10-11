@@ -58,6 +58,18 @@ test("dragging beyond either world edge does not accumulate hidden movement", ()
   assert.deepEqual(camera.getCenter(), { x: 9490, y: 9690 });
 });
 
+test("a world smaller than the viewport stays at the origin and settles", () => {
+  const camera = makeCamera();
+  camera.setCenter({ x: 9000, y: 9000 });
+
+  const moving = camera.update(
+    { ...bounds, worldSize: { width: 100, height: 100 } },
+    1 / 60,
+  );
+  assert.deepEqual(camera.getPosition(), { x: 0, y: 0 });
+  assert.equal(moving, false);
+});
+
 test("growing the viewport at the world edge clamps both target and position", () => {
   const camera = makeCamera();
   camera.setCenter({ x: 9500, y: 9700 });
@@ -73,4 +85,117 @@ test("growing the viewport at the world edge clamps both target and position", (
   camera.update(resizedBounds, 1 / 60);
 
   assert.deepEqual(camera.getPosition(), { x: 8000, y: 8800 });
+});
+
+test("zoom out on edge clamps the camera position", () => {
+  const camera = makeCamera();
+  camera._setTargetZoom(0.5);
+  camera._setZoomAnchor({
+    x: bounds.screenSize.width / 2,
+    y: bounds.screenSize.height / 2,
+  });
+
+  let moving = true;
+
+  for (let frame = 0; frame < 120; frame++) {
+    moving = camera.update(bounds, 1 / 60);
+  }
+
+  assert.deepEqual(camera.getPosition(), { x: 0, y: 0 });
+  assert.equal(moving, false);
+
+  camera._setZoomAnchor(null);
+  camera.setCenter({ x: 9600, y: 9800 });
+
+  moving = true;
+
+  for (let frame = 0; frame < 120; frame++) {
+    moving = camera.update(bounds, 1 / 60);
+  }
+
+  assert.deepEqual(camera.getPosition(), { x: 8000, y: 8800 });
+  assert.deepEqual(camera.getCenter(), { x: 9000, y: 9400 });
+  assert.equal(moving, false);
+
+  camera._setZoomAnchor({
+    x: bounds.screenSize.width / 2,
+    y: bounds.screenSize.height / 2,
+  });
+
+  moving = camera.update(bounds, 1 / 60);
+
+  assert.deepEqual(camera.getPosition(), { x: 8000, y: 8800 });
+  assert.deepEqual(camera.getCenter(), { x: 9000, y: 9400 });
+  assert.equal(moving, false);
+});
+
+test("zoom till target without overshooting and then stops", () => {
+  const camera = makeCamera();
+
+  let targetZoom = 0.6;
+  camera._setTargetZoom(targetZoom);
+  camera._setZoomAnchor({
+    x: bounds.screenSize.width / 2,
+    y: bounds.screenSize.height / 2,
+  });
+
+  let moving = true;
+  let previousZoom = camera.getZoom();
+
+  for (let frame = 0; frame < 120; frame++) {
+    moving = camera.update(bounds, 1 / 60);
+
+    assert.equal(camera.getZoom() <= previousZoom, true);
+    assert.equal(targetZoom <= previousZoom, true);
+
+    previousZoom = camera.getZoom();
+  }
+
+  assert.equal(moving, false);
+  assert.equal(camera.getZoom(), targetZoom);
+  assert.equal(camera.getZoomAnchor(), null);
+
+  targetZoom = 2.3;
+  camera._setTargetZoom(targetZoom);
+  camera._setZoomAnchor({
+    x: bounds.screenSize.width / 2,
+    y: bounds.screenSize.height / 2,
+  });
+
+  moving = true;
+  previousZoom = camera.getZoom();
+
+  for (let frame = 0; frame < 120; frame++) {
+    moving = camera.update(bounds, 1 / 60);
+
+    assert.equal(previousZoom <= camera.getZoom(), true);
+    assert.equal(previousZoom <= targetZoom, true);
+
+    previousZoom = camera.getZoom();
+  }
+
+  assert.equal(moving, false);
+  assert.equal(camera.getZoom(), targetZoom);
+  assert.equal(camera.getZoomAnchor(), null);
+});
+
+test("zoom till target with diffrenet refresh rate achives smoothness", () => {
+  const zooms = [30, 60, 144].map((fps) => {
+    const camera = makeCamera();
+    camera._setTargetZoom(0.5);
+    camera._setZoomAnchor({
+      x: bounds.screenSize.width / 2,
+      y: bounds.screenSize.height / 2,
+    });
+
+    for (let frame = 0; frame < fps / 2; frame++) {
+      camera.update(bounds, 1 / fps);
+    }
+
+    return camera.getZoom();
+  });
+
+  for (const zoom of zooms) {
+    assert.ok(Math.abs(zoom - zooms[0]) < 1e-8);
+  }
 });
