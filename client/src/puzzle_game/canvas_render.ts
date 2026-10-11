@@ -54,6 +54,7 @@ class CanvasRender {
     canvas.addEventListener("pointercancel", this.onPointerEnd);
     canvas.addEventListener("lostpointercapture", this.onPointerEnd);
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    canvas.addEventListener("contextmenu", this.onContextMenu);
     window.addEventListener("blur", this.onBlur);
   }
 
@@ -71,7 +72,9 @@ class CanvasRender {
   };
 
   private onResolutionChange = () => {
-    if (this.destroyed) return;
+    if (this.destroyed) {
+      return;
+    }
 
     this.watchResolution();
     this.resizeBitmap();
@@ -94,18 +97,25 @@ class CanvasRender {
   }
 
   private onPointerDown = (event: PointerEvent) => {
-    if (event.button !== 0 || !event.isPrimary || this.pointerId !== null)
+    if (!event.isPrimary || this.pointerId !== null) {
       return;
+    }
 
-    this.pointerId = event.pointerId;
-    this.lastPointer = { x: event.clientX, y: event.clientY };
-    this.canvas.setPointerCapture(event.pointerId);
+    console.log(event.buttons & 2);
+
+    if ((event.buttons & 2) === 2) {
+      this.pointerId = event.pointerId;
+      this.lastPointer = { x: event.clientX, y: event.clientY };
+      this.canvas.setPointerCapture(event.pointerId);
+    } else if ((event.buttons & 1) === 1) {
+      console.log("TODO: handle drag objects");
+    }
   };
 
   private onPointerMove = (event: PointerEvent) => {
     if (event.pointerId !== this.pointerId) return;
 
-    if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
+    if (event.pointerType === "mouse" && (event.buttons & 2) === 0) {
       this.stopDragging();
 
       return;
@@ -164,6 +174,10 @@ class CanvasRender {
     this.camera.pinchBy(deltaPixels, anchor, this.screenSize);
 
     this.requestRender();
+  };
+
+  private onContextMenu = (event: MouseEvent) => {
+    event.preventDefault();
   };
 
   private stopDragging() {
@@ -266,6 +280,7 @@ class CanvasRender {
     this.canvas.removeEventListener("pointercancel", this.onPointerEnd);
     this.canvas.removeEventListener("lostpointercapture", this.onPointerEnd);
     this.canvas.removeEventListener("wheel", this.onWheel);
+    this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     window.removeEventListener("blur", this.onBlur);
 
     this.stopDragging();
