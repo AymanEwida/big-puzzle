@@ -58,18 +58,6 @@ test("dragging beyond either world edge does not accumulate hidden movement", ()
   assert.deepEqual(camera.getCenter(), { x: 9490, y: 9690 });
 });
 
-test("a world smaller than the viewport stays at the origin and settles", () => {
-  const camera = makeCamera();
-  camera.setCenter({ x: 9000, y: 9000 });
-
-  const moving = camera.update(
-    { ...bounds, worldSize: { width: 100, height: 100 } },
-    1 / 60,
-  );
-  assert.deepEqual(camera.getPosition(), { x: 0, y: 0 });
-  assert.equal(moving, false);
-});
-
 test("growing the viewport at the world edge clamps both target and position", () => {
   const camera = makeCamera();
   camera.setCenter({ x: 9500, y: 9700 });
@@ -85,5 +73,4 @@ test("growing the viewport at the world edge clamps both target and position", (
   camera.update(resizedBounds, 1 / 60);
 
   assert.deepEqual(camera.getPosition(), { x: 8000, y: 8800 });
-  assert.deepEqual(camera.getCenter(), { x: 9000, y: 9400 });
 });

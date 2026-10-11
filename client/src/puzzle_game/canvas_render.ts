@@ -30,7 +30,7 @@ class CanvasRender {
       { x: 0, y: 0 },
       { x: rect.width / 2, y: rect.height / 2 },
       12,
-      8,
+      10,
     );
 
     this.resizeObserver = new ResizeObserver(([entry]) => {
@@ -53,6 +53,7 @@ class CanvasRender {
     canvas.addEventListener("pointerup", this.onPointerEnd);
     canvas.addEventListener("pointercancel", this.onPointerEnd);
     canvas.addEventListener("lostpointercapture", this.onPointerEnd);
+    canvas.addEventListener("wheel", this.onWheel, { passive: false });
     window.addEventListener("blur", this.onBlur);
   }
 
@@ -130,6 +131,41 @@ class CanvasRender {
 
   private onBlur = () => this.stopDragging();
 
+  private onWheel = (event: WheelEvent) => {
+    if (!event.ctrlKey) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const rect = this.canvas.getBoundingClientRect();
+
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    let deltaPixels = event.deltaY;
+
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+      deltaPixels *= 16;
+    } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+      deltaPixels *= this.screenSize.height;
+    }
+
+    if (deltaPixels === 0) {
+      return;
+    }
+
+    const anchor = {
+      x: (event.clientX - rect.left) * (this.screenSize.width / rect.width),
+      y: (event.clientY - rect.top) * (this.screenSize.height / rect.height),
+    };
+
+    this.camera.pinchBy(deltaPixels, anchor, this.screenSize);
+
+    this.requestRender();
+  };
+
   private stopDragging() {
     const pointerId = this.pointerId;
     this.pointerId = null;
@@ -203,6 +239,9 @@ class CanvasRender {
     ctx.lineTo(1000, 1000);
     ctx.stroke();
 
+    ctx.fillStyle = "red";
+    ctx.fillRect(5000, 5000, 200, 200);
+
     ctx.restore();
   }
 
@@ -225,6 +264,7 @@ class CanvasRender {
     this.canvas.removeEventListener("pointerup", this.onPointerEnd);
     this.canvas.removeEventListener("pointercancel", this.onPointerEnd);
     this.canvas.removeEventListener("lostpointercapture", this.onPointerEnd);
+    this.canvas.removeEventListener("wheel", this.onWheel);
     window.removeEventListener("blur", this.onBlur);
 
     this.stopDragging();
