@@ -1,14 +1,5 @@
-import type { Position, Size } from "../types/game_types";
-
-interface CameraBounds {
-  screenSize: Size;
-  worldSize: Size;
-}
-
-interface ZoomAnchor {
-  screen: Position;
-  world: Position;
-}
+import type { Position, Size } from "../types";
+import type { ZoomAnchor, CameraBounds } from "./types";
 
 class Camera {
   private position: Position;

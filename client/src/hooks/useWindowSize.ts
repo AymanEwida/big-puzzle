@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Size } from "../types/game_types.ts";
+import type { Size } from "../puzzle_game/types";
 
 function getWindowSize(): Size {
   return {

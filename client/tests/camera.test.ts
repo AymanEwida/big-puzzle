@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import Camera from "../src/puzzle_game/camera.ts";
+import Camera from "../src/puzzle_game/camera/camera.ts";
 
 const bounds = {
   screenSize: { width: 1000, height: 600 },

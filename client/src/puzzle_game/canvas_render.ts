@@ -1,5 +1,5 @@
-import type { Position, Size } from "../types/game_types";
-import Camera from "./camera";
+import type { Position, Size } from "./types";
+import Camera from "./camera/camera";
 
 class CanvasRender {
   private canvas: HTMLCanvasElement;
