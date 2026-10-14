@@ -1,6 +1,9 @@
 import type { Position, Size } from "./types";
 import Camera from "./camera/camera";
 
+const LEFT_CLICK_BUTTON = 0;
+const RIGHT_CLICK_BUTTON = 2;
+
 class CanvasRender {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -9,11 +12,18 @@ class CanvasRender {
   private camera: Camera;
   private pointerId: number | null = null;
   private lastPointer: Position = { x: 0, y: 0 };
+  private mouseButton: number | null = null;
+  private lastDeltaVector: Position | null = null;
   private frameId: number | null = null;
   private previousTime: number | null = null;
   private destroyed = false;
   private resizeObserver: ResizeObserver;
   private resolutionQuery: MediaQueryList | null = null;
+
+  // this object for test only, will change later
+  private isCurrentObjectOutOfScreen: boolean = false;
+  private startObject: Position = { x: 5000, y: 5000 };
+  private endObject: Position = { x: 5200, y: 5200 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -93,47 +103,109 @@ class CanvasRender {
       this.canvas.height = height;
     }
 
+    this.render();
+
     this.requestRender();
   }
 
   private onPointerDown = (event: PointerEvent) => {
-    if (!event.isPrimary || this.pointerId !== null) {
+    if (
+      this.mouseButton !== null ||
+      !event.isPrimary ||
+      this.pointerId !== null
+    ) {
       return;
     }
 
-    console.log(event.buttons & 2);
-
-    if ((event.buttons & 2) === 2) {
-      this.pointerId = event.pointerId;
-      this.lastPointer = { x: event.clientX, y: event.clientY };
-      this.canvas.setPointerCapture(event.pointerId);
-    } else if ((event.buttons & 1) === 1) {
-      console.log("TODO: handle drag objects");
+    this.mouseButton = event.button;
+    if (this.mouseButton === null) {
+      return;
     }
+
+    if (this.mouseButton === LEFT_CLICK_BUTTON) {
+      const cameraPosition = this.camera.getPosition();
+      const cameraZoom = this.camera.getZoom();
+
+      const cursorPosition = {
+        x: cameraPosition.x + event.clientX / cameraZoom,
+        y: cameraPosition.y + event.clientY / cameraZoom,
+      };
+
+      if (!(
+        this.startObject.x <= cursorPosition.x &&
+        cursorPosition.x <= this.endObject.x &&
+        this.startObject.y <= cursorPosition.y &&
+        cursorPosition.y <= this.endObject.y
+      )) {
+        this.mouseButton = null;
+
+        return;
+      }
+    }
+
+    this.pointerId = event.pointerId;
+    this.lastPointer = { x: event.clientX, y: event.clientY };
+    this.canvas.setPointerCapture(event.pointerId);
   };
 
   private onPointerMove = (event: PointerEvent) => {
-    if (event.pointerId !== this.pointerId) return;
-
-    if (event.pointerType === "mouse" && (event.buttons & 2) === 0) {
-      this.stopDragging();
-
+    if (event.pointerId !== this.pointerId || this.mouseButton === null) {
       return;
     }
 
-    this.camera.panBy(
-      {
-        x: this.lastPointer.x - event.clientX,
-        y: this.lastPointer.y - event.clientY,
-      },
-      { screenSize: this.screenSize, worldSize: this.worldSize },
-    );
+    const delta: Position = {
+      x: this.lastPointer.x - event.clientX,
+      y: this.lastPointer.y - event.clientY,
+    };
+
+    if (this.mouseButton === RIGHT_CLICK_BUTTON) {
+      if (event.pointerType === "mouse" && (event.buttons & 2) === 0) {
+        this.stopDragging();
+
+        return;
+      }
+
+      this.camera.panBy(delta, {
+        screenSize: this.screenSize,
+        worldSize: this.worldSize,
+      });
+    } else if (this.mouseButton === LEFT_CLICK_BUTTON) {
+      const cameraZoom = this.camera.getZoom();
+
+      this.startObject = {
+        x: Math.max(0, this.startObject.x - delta.x / cameraZoom),
+        y: Math.max(0, this.startObject.y - delta.y / cameraZoom),
+      };
+
+      this.endObject = {
+        x: Math.min(this.startObject.x + 200, this.worldSize.width),
+        y: Math.min(this.startObject.y + 200, this.worldSize.height),
+      };
+
+      const cameraStartPosition = this.camera.getPosition();
+      const cameraEndPosition = {
+        x: cameraStartPosition.x + this.screenSize.width,
+        y: cameraStartPosition.y + this.screenSize.height,
+      };
+
+      this.isCurrentObjectOutOfScreen =
+        this.startObject.x <= cameraStartPosition.x ||
+        this.endObject.x >= cameraEndPosition.x ||
+        this.startObject.y <= cameraStartPosition.y ||
+        this.endObject.y >= cameraEndPosition.y;
+    }
+
+    this.lastDeltaVector = delta;
     this.lastPointer = { x: event.clientX, y: event.clientY };
 
     this.requestRender();
   };
 
   private onPointerEnd = (event: PointerEvent) => {
+    this.lastDeltaVector = null;
+    this.isCurrentObjectOutOfScreen = false;
+    this.mouseButton = null;
+
     if (event.pointerId === this.pointerId) {
       this.stopDragging();
     }
@@ -225,11 +297,47 @@ class CanvasRender {
 
     this.previousTime = time;
 
-    const moving = this.camera.update(
+    let moving = this.camera.update(
       { screenSize: this.screenSize, worldSize: this.worldSize },
       deltaSeconds,
     );
     this.render();
+
+    // TODO: fix this the object is moving too slow
+    if (this.isCurrentObjectOutOfScreen && this.lastDeltaVector !== null) {
+      console.log("lastDelta", this.lastDeltaVector);
+
+      this.camera.panBy(
+        {
+          x: -this.lastDeltaVector.x,
+          y: -this.lastDeltaVector.y,
+        },
+        {
+          screenSize: this.screenSize,
+          worldSize: this.worldSize,
+        },
+      );
+
+      const cameraZoom = this.camera.getZoom();
+
+      this.startObject = {
+        x: Math.max(
+          0,
+          this.startObject.x - this.lastDeltaVector.x / cameraZoom,
+        ),
+        y: Math.max(
+          0,
+          this.startObject.y - this.lastDeltaVector.y / cameraZoom,
+        ),
+      };
+
+      this.endObject = {
+        x: Math.min(this.startObject.x + 200, this.worldSize.width),
+        y: Math.min(this.startObject.y + 200, this.worldSize.height),
+      };
+
+      moving = true;
+    }
 
     if (moving) {
       this.requestRender();
@@ -270,9 +378,25 @@ class CanvasRender {
 
     ctx.fillStyle = "red";
     ctx.fillRect(500, 500, 200, 200);
-    ctx.fillRect(5000, 5000, 200, 200);
+    ctx.fillRect(this.startObject.x, this.startObject.y, 200, 200);
 
     ctx.restore();
+
+    const cameraCenter = this.camera.getCenter();
+
+    ctx.font = "48px serif";
+
+    ctx.fillText(
+      `center: (x: ${Math.round(cameraCenter.x)}, y: ${Math.round(cameraCenter.y)})`,
+      10,
+      this.canvas.height - 100,
+    );
+
+    ctx.fillText(
+      `top left: (x: ${Math.round(cameraPosition.x)}, y: ${Math.round(cameraPosition.y)})`,
+      10,
+      this.canvas.height - 30,
+    );
   }
 
   destroy() {
