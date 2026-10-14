@@ -142,38 +142,53 @@ class CanvasRender {
   private onBlur = () => this.stopDragging();
 
   private onWheel = (event: WheelEvent) => {
-    if (!event.ctrlKey) {
-      return;
-    }
-
     event.preventDefault();
 
-    const rect = this.canvas.getBoundingClientRect();
-
-    if (rect.width <= 0 || rect.height <= 0) {
-      return;
-    }
-
-    let deltaPixels = event.deltaY;
+    let deltaY = event.deltaY;
+    let deltaX = event.deltaX;
 
     if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-      deltaPixels *= 16;
+      deltaY *= 16;
+      deltaX *= 16;
     } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-      deltaPixels *= this.screenSize.height;
+      deltaY *= this.screenSize.height;
+      deltaX *= this.screenSize.height;
     }
 
-    if (deltaPixels === 0) {
-      return;
+    if (!event.ctrlKey) {
+      if (deltaX === 0 && deltaY === 0) {
+        return;
+      }
+
+      this.camera.panBy(
+        {
+          x: deltaX,
+          y: deltaY,
+        },
+        { screenSize: this.screenSize, worldSize: this.worldSize },
+      );
+
+      this.requestRender();
+    } else {
+      const rect = this.canvas.getBoundingClientRect();
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+
+      if (deltaY === 0) {
+        return;
+      }
+
+      const anchor = {
+        x: (event.clientX - rect.left) * (this.screenSize.width / rect.width),
+        y: (event.clientY - rect.top) * (this.screenSize.height / rect.height),
+      };
+
+      this.camera.pinchBy(deltaY, anchor, this.screenSize);
+
+      this.requestRender();
     }
-
-    const anchor = {
-      x: (event.clientX - rect.left) * (this.screenSize.width / rect.width),
-      y: (event.clientY - rect.top) * (this.screenSize.height / rect.height),
-    };
-
-    this.camera.pinchBy(deltaPixels, anchor, this.screenSize);
-
-    this.requestRender();
   };
 
   private onContextMenu = (event: MouseEvent) => {
