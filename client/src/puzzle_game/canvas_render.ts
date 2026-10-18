@@ -13,17 +13,26 @@ class CanvasRender {
   private pointerId: number | null = null;
   private lastPointer: Position = { x: 0, y: 0 };
   private mouseButton: number | null = null;
-  private lastDeltaVector: Position | null = null;
   private frameId: number | null = null;
   private previousTime: number | null = null;
   private destroyed = false;
   private resizeObserver: ResizeObserver;
   private resolutionQuery: MediaQueryList | null = null;
+  private dragOffset: Position | null = null;
+  private readonly autoPanRampDistance = 120;
+  private readonly autoPanMinSpeed = 400;
+  private readonly autoPanMaxSpeed = 600;
 
   // this object for test only, will change later
-  private isCurrentObjectOutOfScreen: boolean = false;
+  private readonly objectSize: Size = {
+    width: 200,
+    height: 200,
+  };
   private startObject: Position = { x: 5000, y: 5000 };
-  private endObject: Position = { x: 5200, y: 5200 };
+  private endObject: Position = {
+    x: this.startObject.x + this.objectSize.width,
+    y: this.startObject.y + this.objectSize.height,
+  };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -66,6 +75,110 @@ class CanvasRender {
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
     canvas.addEventListener("contextmenu", this.onContextMenu);
     window.addEventListener("blur", this.onBlur);
+  }
+
+  private clientToScreen(clientPosition: Position): Position | null {
+    const rect = this.canvas.getBoundingClientRect();
+
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    return {
+      x: (clientPosition.x - rect.left) * (this.screenSize.width / rect.width),
+      y: (clientPosition.y - rect.top) * (this.screenSize.height / rect.height),
+    };
+  }
+
+  private screenToWorld(screenPosition: Position): Position {
+    const cameraPosition = this.camera.getPosition();
+    const cameraZoom = this.camera.getZoom();
+
+    return {
+      x: cameraPosition.x + screenPosition.x / cameraZoom,
+      y: cameraPosition.y + screenPosition.y / cameraZoom,
+    };
+  }
+
+  private updateDraggedObject(screenPointer: Position) {
+    if (this.dragOffset === null) {
+      return;
+    }
+
+    const worldPointer = this.screenToWorld(screenPointer);
+    if (worldPointer === null) {
+      return;
+    }
+
+    const maxX = Math.max(0, this.worldSize.width - this.objectSize.width);
+    const maxY = Math.max(0, this.worldSize.height - this.objectSize.height);
+
+    this.startObject = {
+      x: Math.max(0, Math.min(worldPointer.x - this.dragOffset.x, maxX)),
+      y: Math.max(0, Math.min(worldPointer.y - this.dragOffset.y, maxY)),
+    };
+
+    this.endObject = {
+      x: this.startObject.x + this.objectSize.width,
+      y: this.startObject.y + this.objectSize.height,
+    };
+  }
+
+  private getAxisAutoPanSpeed(
+    startAxis: number,
+    endAxis: number,
+    viewportSize: number,
+  ): number {
+    if (startAxis < 0 && endAxis > viewportSize) {
+      return 0;
+    }
+    let overflow = 0;
+
+    if (startAxis < 0) {
+      overflow = startAxis;
+    } else if (endAxis > viewportSize) {
+      overflow = endAxis - viewportSize;
+    }
+
+    if (overflow === 0) {
+      return 0;
+    }
+
+    const overflowPercentage = Math.min(
+      Math.abs(overflow) / this.autoPanRampDistance,
+      1,
+    );
+
+    const speed =
+      this.autoPanMinSpeed +
+      (this.autoPanMaxSpeed - this.autoPanMinSpeed) * overflowPercentage;
+
+    return Math.sign(overflow) * speed;
+  }
+
+  private getAutoPanVelocity(): Position {
+    const cameraPosition = this.camera.getPosition();
+    const cameraZoom = this.camera.getZoom();
+
+    const screenPositions = {
+      left: (this.startObject.x - cameraPosition.x) * cameraZoom,
+      top: (this.startObject.y - cameraPosition.y) * cameraZoom,
+      right: (this.endObject.x - cameraPosition.x) * cameraZoom,
+      bottom: (this.endObject.y - cameraPosition.y) * cameraZoom,
+    };
+
+    return {
+      x: this.getAxisAutoPanSpeed(
+        screenPositions.left,
+        screenPositions.right,
+        this.screenSize.width,
+      ),
+      y: this.getAxisAutoPanSpeed(
+        screenPositions.top,
+        screenPositions.bottom,
+        this.screenSize.height,
+      ),
+    };
   }
 
   private watchResolution = () => {
@@ -112,39 +225,48 @@ class CanvasRender {
     if (
       this.mouseButton !== null ||
       !event.isPrimary ||
-      this.pointerId !== null
+      this.pointerId !== null ||
+      (event.button !== LEFT_CLICK_BUTTON &&
+        event.button !== RIGHT_CLICK_BUTTON)
     ) {
       return;
     }
 
-    this.mouseButton = event.button;
-    if (this.mouseButton === null) {
+    const clientPointer = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+
+    const screenPointer = this.clientToScreen(clientPointer);
+    if (screenPointer === null) {
       return;
     }
 
-    if (this.mouseButton === LEFT_CLICK_BUTTON) {
-      const cameraPosition = this.camera.getPosition();
-      const cameraZoom = this.camera.getZoom();
+    if (event.button === LEFT_CLICK_BUTTON) {
+      const worldPointer = this.screenToWorld(screenPointer);
 
-      const cursorPosition = {
-        x: cameraPosition.x + event.clientX / cameraZoom,
-        y: cameraPosition.y + event.clientY / cameraZoom,
-      };
+      const isInsideObject =
+        this.startObject.x <= worldPointer.x &&
+        this.startObject.y <= worldPointer.y &&
+        this.endObject.x >= worldPointer.x &&
+        this.endObject.y >= worldPointer.y;
 
-      if (!(
-        this.startObject.x <= cursorPosition.x &&
-        cursorPosition.x <= this.endObject.x &&
-        this.startObject.y <= cursorPosition.y &&
-        cursorPosition.y <= this.endObject.y
-      )) {
-        this.mouseButton = null;
-
+      if (!isInsideObject) {
         return;
       }
+
+      this.dragOffset = {
+        x: worldPointer.x - this.startObject.x,
+        y: worldPointer.y - this.startObject.y,
+      };
+    } else {
+      this.dragOffset = null;
     }
 
+    this.mouseButton = event.button;
     this.pointerId = event.pointerId;
-    this.lastPointer = { x: event.clientX, y: event.clientY };
+    this.lastPointer = clientPointer;
+
     this.canvas.setPointerCapture(event.pointerId);
   };
 
@@ -153,62 +275,65 @@ class CanvasRender {
       return;
     }
 
-    const delta: Position = {
-      x: this.lastPointer.x - event.clientX,
-      y: this.lastPointer.y - event.clientY,
+    const requiredButton = this.mouseButton === LEFT_CLICK_BUTTON ? 1 : 2;
+    if (
+      event.pointerType === "mouse" &&
+      (event.buttons & requiredButton) === 0
+    ) {
+      this.stopDragging();
+
+      return;
+    }
+
+    const currentClient: Position = {
+      x: event.clientX,
+      y: event.clientY,
     };
 
     if (this.mouseButton === RIGHT_CLICK_BUTTON) {
-      if (event.pointerType === "mouse" && (event.buttons & 2) === 0) {
-        this.stopDragging();
+      const previous = this.clientToScreen(this.lastPointer);
+      const current = this.clientToScreen(currentClient);
 
-        return;
+      if (previous !== null && current !== null) {
+        this.camera.panBy(
+          {
+            x: previous.x - current.x,
+            y: previous.y - current.y,
+          },
+          {
+            screenSize: this.screenSize,
+            worldSize: this.worldSize,
+          },
+        );
       }
-
-      this.camera.panBy(delta, {
-        screenSize: this.screenSize,
-        worldSize: this.worldSize,
-      });
-    } else if (this.mouseButton === LEFT_CLICK_BUTTON) {
-      const cameraZoom = this.camera.getZoom();
-
-      this.startObject = {
-        x: Math.max(0, this.startObject.x - delta.x / cameraZoom),
-        y: Math.max(0, this.startObject.y - delta.y / cameraZoom),
-      };
-
-      this.endObject = {
-        x: Math.min(this.startObject.x + 200, this.worldSize.width),
-        y: Math.min(this.startObject.y + 200, this.worldSize.height),
-      };
-
-      const cameraStartPosition = this.camera.getPosition();
-      const cameraEndPosition = {
-        x: cameraStartPosition.x + this.screenSize.width,
-        y: cameraStartPosition.y + this.screenSize.height,
-      };
-
-      this.isCurrentObjectOutOfScreen =
-        this.startObject.x <= cameraStartPosition.x ||
-        this.endObject.x >= cameraEndPosition.x ||
-        this.startObject.y <= cameraStartPosition.y ||
-        this.endObject.y >= cameraEndPosition.y;
     }
 
-    this.lastDeltaVector = delta;
-    this.lastPointer = { x: event.clientX, y: event.clientY };
+    this.lastPointer = currentClient;
 
     this.requestRender();
   };
 
   private onPointerEnd = (event: PointerEvent) => {
-    this.lastDeltaVector = null;
-    this.isCurrentObjectOutOfScreen = false;
-    this.mouseButton = null;
-
-    if (event.pointerId === this.pointerId) {
-      this.stopDragging();
+    if (event.pointerId !== this.pointerId) {
+      return;
     }
+
+    if (event.type === "pointerup" && this.dragOffset !== null) {
+      this.lastPointer = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+
+      const screenPointer = this.clientToScreen(this.lastPointer);
+
+      if (screenPointer !== null) {
+        this.updateDraggedObject(screenPointer);
+      }
+
+      this.requestRender();
+    }
+
+    this.stopDragging();
   };
 
   private onBlur = () => this.stopDragging();
@@ -224,7 +349,7 @@ class CanvasRender {
       deltaX *= 16;
     } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
       deltaY *= this.screenSize.height;
-      deltaX *= this.screenSize.height;
+      deltaX *= this.screenSize.width;
     }
 
     if (!event.ctrlKey) {
@@ -271,6 +396,9 @@ class CanvasRender {
     const pointerId = this.pointerId;
     this.pointerId = null;
 
+    this.mouseButton = null;
+    this.dragOffset = null;
+
     if (pointerId !== null && this.canvas.hasPointerCapture(pointerId)) {
       this.canvas.releasePointerCapture(pointerId);
     }
@@ -286,6 +414,7 @@ class CanvasRender {
 
   private onFrame = (time: number) => {
     this.frameId = null;
+
     if (this.destroyed) {
       return;
     }
@@ -297,49 +426,52 @@ class CanvasRender {
 
     this.previousTime = time;
 
-    let moving = this.camera.update(
-      { screenSize: this.screenSize, worldSize: this.worldSize },
-      deltaSeconds,
-    );
-    this.render();
+    const bounds = { screenSize: this.screenSize, worldSize: this.worldSize };
 
-    // TODO: fix this the object is moving too slow
-    if (this.isCurrentObjectOutOfScreen && this.lastDeltaVector !== null) {
-      console.log("lastDelta", this.lastDeltaVector);
+    const isDraggingObject =
+      this.pointerId !== null &&
+      this.mouseButton === LEFT_CLICK_BUTTON &&
+      this.dragOffset !== null;
 
-      this.camera.panBy(
-        {
-          x: -this.lastDeltaVector.x,
-          y: -this.lastDeltaVector.y,
-        },
-        {
-          screenSize: this.screenSize,
-          worldSize: this.worldSize,
-        },
-      );
+    const screenPointer = isDraggingObject
+      ? this.clientToScreen(this.lastPointer)
+      : null;
 
-      const cameraZoom = this.camera.getZoom();
+    let autoPanVelocity: Position = { x: 0, y: 0 };
 
-      this.startObject = {
-        x: Math.max(
-          0,
-          this.startObject.x - this.lastDeltaVector.x / cameraZoom,
-        ),
-        y: Math.max(
-          0,
-          this.startObject.y - this.lastDeltaVector.y / cameraZoom,
-        ),
-      };
+    if (screenPointer !== null) {
+      this.updateDraggedObject(screenPointer);
 
-      this.endObject = {
-        x: Math.min(this.startObject.x + 200, this.worldSize.width),
-        y: Math.min(this.startObject.y + 200, this.worldSize.height),
-      };
+      autoPanVelocity = this.getAutoPanVelocity();
 
-      moving = true;
+      if (autoPanVelocity.x !== 0 || autoPanVelocity.y !== 0) {
+        this.camera.panBy(
+          {
+            x: autoPanVelocity.x * deltaSeconds,
+            y: autoPanVelocity.y * deltaSeconds,
+          },
+          bounds,
+        );
+      }
     }
 
-    if (moving) {
+    const cameraPreviousPosition = { ...this.camera.getPosition() };
+    const cameraMoving = this.camera.update(bounds, deltaSeconds);
+    const cameraCurrentPosition = this.camera.getPosition();
+
+    const isCameraMoved =
+      cameraPreviousPosition.x !== cameraCurrentPosition.x ||
+      cameraPreviousPosition.y !== cameraCurrentPosition.y;
+
+    if (screenPointer !== null) {
+      this.updateDraggedObject(screenPointer);
+    }
+
+    this.render();
+
+    const autoPanRequested = autoPanVelocity.x !== 0 || autoPanVelocity.y !== 0;
+
+    if (cameraMoving || (autoPanRequested && isCameraMoved)) {
       this.requestRender();
     } else {
       this.previousTime = null;
@@ -378,7 +510,12 @@ class CanvasRender {
 
     ctx.fillStyle = "red";
     ctx.fillRect(500, 500, 200, 200);
-    ctx.fillRect(this.startObject.x, this.startObject.y, 200, 200);
+    ctx.fillRect(
+      this.startObject.x,
+      this.startObject.y,
+      this.objectSize.width,
+      this.objectSize.height,
+    );
 
     ctx.restore();
 
