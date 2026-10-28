@@ -1,5 +1,6 @@
-import type { Position, Size } from "./types";
+import type { AutoPanInfo, Position, Size } from "./types";
 import Camera from "./camera/camera";
+import { clientToScreen, getAutoPanVelocity, screenToWorld } from "./utils";
 
 const LEFT_CLICK_BUTTON = 0;
 const RIGHT_CLICK_BUTTON = 2;
@@ -19,9 +20,12 @@ class CanvasRender {
   private resizeObserver: ResizeObserver;
   private resolutionQuery: MediaQueryList | null = null;
   private dragOffset: Position | null = null;
-  private readonly autoPanRampDistance = 120;
-  private readonly autoPanMinSpeed = 400;
-  private readonly autoPanMaxSpeed = 600;
+  // TODO: see if autoPanRampDistance should be determined by object size and have distance to x and one for y
+  private readonly autoPanInfo: AutoPanInfo = {
+    autoPanRampDistance: 120,
+    autoPanMinSpeed: 400,
+    autoPanMaxSpeed: 600,
+  };
 
   // this object for test only, will change later
   private readonly objectSize: Size = {
@@ -77,35 +81,17 @@ class CanvasRender {
     window.addEventListener("blur", this.onBlur);
   }
 
-  private clientToScreen(clientPosition: Position): Position | null {
-    const rect = this.canvas.getBoundingClientRect();
-
-    if (rect.width <= 0 || rect.height <= 0) {
-      return null;
-    }
-
-    return {
-      x: (clientPosition.x - rect.left) * (this.screenSize.width / rect.width),
-      y: (clientPosition.y - rect.top) * (this.screenSize.height / rect.height),
-    };
-  }
-
-  private screenToWorld(screenPosition: Position): Position {
-    const cameraPosition = this.camera.getPosition();
-    const cameraZoom = this.camera.getZoom();
-
-    return {
-      x: cameraPosition.x + screenPosition.x / cameraZoom,
-      y: cameraPosition.y + screenPosition.y / cameraZoom,
-    };
-  }
-
   private updateDraggedObject(screenPointer: Position) {
     if (this.dragOffset === null) {
       return;
     }
 
-    const worldPointer = this.screenToWorld(screenPointer);
+    const cameraPosition = this.camera.getPosition();
+    const cameraZoom = this.camera.getZoom();
+    const worldPointer = screenToWorld(screenPointer, {
+      zoom: cameraZoom,
+      position: cameraPosition,
+    });
     if (worldPointer === null) {
       return;
     }
@@ -121,63 +107,6 @@ class CanvasRender {
     this.endObject = {
       x: this.startObject.x + this.objectSize.width,
       y: this.startObject.y + this.objectSize.height,
-    };
-  }
-
-  private getAxisAutoPanSpeed(
-    startAxis: number,
-    endAxis: number,
-    viewportSize: number,
-  ): number {
-    if (startAxis < 0 && endAxis > viewportSize) {
-      return 0;
-    }
-    let overflow = 0;
-
-    if (startAxis < 0) {
-      overflow = startAxis;
-    } else if (endAxis > viewportSize) {
-      overflow = endAxis - viewportSize;
-    }
-
-    if (overflow === 0) {
-      return 0;
-    }
-
-    const overflowPercentage = Math.min(
-      Math.abs(overflow) / this.autoPanRampDistance,
-      1,
-    );
-
-    const speed =
-      this.autoPanMinSpeed +
-      (this.autoPanMaxSpeed - this.autoPanMinSpeed) * overflowPercentage;
-
-    return Math.sign(overflow) * speed;
-  }
-
-  private getAutoPanVelocity(): Position {
-    const cameraPosition = this.camera.getPosition();
-    const cameraZoom = this.camera.getZoom();
-
-    const screenPositions = {
-      left: (this.startObject.x - cameraPosition.x) * cameraZoom,
-      top: (this.startObject.y - cameraPosition.y) * cameraZoom,
-      right: (this.endObject.x - cameraPosition.x) * cameraZoom,
-      bottom: (this.endObject.y - cameraPosition.y) * cameraZoom,
-    };
-
-    return {
-      x: this.getAxisAutoPanSpeed(
-        screenPositions.left,
-        screenPositions.right,
-        this.screenSize.width,
-      ),
-      y: this.getAxisAutoPanSpeed(
-        screenPositions.top,
-        screenPositions.bottom,
-        this.screenSize.height,
-      ),
     };
   }
 
@@ -237,13 +166,27 @@ class CanvasRender {
       y: event.clientY,
     };
 
-    const screenPointer = this.clientToScreen(clientPointer);
+    const rect = this.canvas.getBoundingClientRect();
+    const screenPointer = clientToScreen(clientPointer, this.screenSize, {
+      top: rect.top,
+      left: rect.left,
+      size: {
+        width: rect.width,
+        height: rect.height,
+      },
+    });
+
     if (screenPointer === null) {
       return;
     }
 
     if (event.button === LEFT_CLICK_BUTTON) {
-      const worldPointer = this.screenToWorld(screenPointer);
+      const cameraPosition = this.camera.getPosition();
+      const cameraZoom = this.camera.getZoom();
+      const worldPointer = screenToWorld(screenPointer, {
+        zoom: cameraZoom,
+        position: cameraPosition,
+      });
 
       const isInsideObject =
         this.startObject.x <= worldPointer.x &&
@@ -291,8 +234,24 @@ class CanvasRender {
     };
 
     if (this.mouseButton === RIGHT_CLICK_BUTTON) {
-      const previous = this.clientToScreen(this.lastPointer);
-      const current = this.clientToScreen(currentClient);
+      const rect = this.canvas.getBoundingClientRect();
+
+      const previous = clientToScreen(this.lastPointer, this.screenSize, {
+        top: rect.top,
+        left: rect.left,
+        size: {
+          width: rect.width,
+          height: rect.height,
+        },
+      });
+      const current = clientToScreen(currentClient, this.screenSize, {
+        top: rect.top,
+        left: rect.left,
+        size: {
+          width: rect.width,
+          height: rect.height,
+        },
+      });
 
       if (previous !== null && current !== null) {
         this.camera.panBy(
@@ -324,7 +283,15 @@ class CanvasRender {
         y: event.clientY,
       };
 
-      const screenPointer = this.clientToScreen(this.lastPointer);
+      const rect = this.canvas.getBoundingClientRect();
+      const screenPointer = clientToScreen(this.lastPointer, this.screenSize, {
+        top: rect.top,
+        left: rect.left,
+        size: {
+          width: rect.width,
+          height: rect.height,
+        },
+      });
 
       if (screenPointer !== null) {
         this.updateDraggedObject(screenPointer);
@@ -433,8 +400,16 @@ class CanvasRender {
       this.mouseButton === LEFT_CLICK_BUTTON &&
       this.dragOffset !== null;
 
+    const rect = this.canvas.getBoundingClientRect();
     const screenPointer = isDraggingObject
-      ? this.clientToScreen(this.lastPointer)
+      ? clientToScreen(this.lastPointer, this.screenSize, {
+          top: rect.top,
+          left: rect.left,
+          size: {
+            width: rect.width,
+            height: rect.height,
+          },
+        })
       : null;
 
     let autoPanVelocity: Position = { x: 0, y: 0 };
@@ -442,7 +417,17 @@ class CanvasRender {
     if (screenPointer !== null) {
       this.updateDraggedObject(screenPointer);
 
-      autoPanVelocity = this.getAutoPanVelocity();
+      const cameraPosition = this.camera.getPosition();
+      const cameraZoom = this.camera.getZoom();
+      autoPanVelocity = getAutoPanVelocity(
+        {
+          startObject: this.startObject,
+          endObject: this.endObject,
+        },
+        this.screenSize,
+        { zoom: cameraZoom, position: cameraPosition },
+        this.autoPanInfo,
+      );
 
       if (autoPanVelocity.x !== 0 || autoPanVelocity.y !== 0) {
         this.camera.panBy(
