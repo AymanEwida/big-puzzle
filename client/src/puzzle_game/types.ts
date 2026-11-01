@@ -31,11 +31,6 @@ interface AutoPanInfo {
   autoPanMaxSpeed: number;
 }
 
-interface ObjectInfo {
-  startObject: Position;
-  endObject: Position;
-}
-
 export type {
   Size,
   Position,
@@ -43,5 +38,4 @@ export type {
   ClientBoundings,
   CameraInfo,
   AutoPanInfo,
-  ObjectInfo,
 };

@@ -1,6 +1,13 @@
 import type { AutoPanInfo, Position, Size } from "./types";
 import Camera from "./camera/camera";
-import { clientToScreen, getAutoPanVelocity, screenToWorld } from "./utils";
+import {
+  clientToScreen,
+  getAutoPanVelocity,
+  getRandomPieces,
+  screenToWorld,
+} from "./utils";
+import SpatialGrid from "./puzzle-pieces/spatial_grid";
+import { chunkSize, piecesNumber } from "./puzzle-pieces/constants";
 
 const LEFT_CLICK_BUTTON = 0;
 const RIGHT_CLICK_BUTTON = 2;
@@ -9,7 +16,7 @@ class CanvasRender {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private screenSize: Size; // CSS pixels not bitmap resolution.
-  private worldSize: Size = { width: 10000, height: 10000 };
+  private worldSize: Size = { width: 16000, height: 16000 };
   private camera: Camera;
   private pointerId: number | null = null;
   private lastPointer: Position = { x: 0, y: 0 };
@@ -20,12 +27,13 @@ class CanvasRender {
   private resizeObserver: ResizeObserver;
   private resolutionQuery: MediaQueryList | null = null;
   private dragOffset: Position | null = null;
-  // TODO: see if autoPanRampDistance should be determined by object size and have distance to x and one for y
   private readonly autoPanInfo: AutoPanInfo = {
     autoPanRampDistance: 120,
     autoPanMinSpeed: 400,
     autoPanMaxSpeed: 600,
   };
+  private spatialGrid: SpatialGrid;
+  private imageAtlas: HTMLImageElement = new Image();
 
   // this object for test only, will change later
   private readonly objectSize: Size = {
@@ -55,6 +63,16 @@ class CanvasRender {
       12,
       10,
     );
+    this.spatialGrid = new SpatialGrid(
+      Math.ceil(this.worldSize.height / chunkSize),
+      Math.ceil(this.worldSize.width / chunkSize),
+    );
+    // TODO: this is only for test later query the pieces from the server on connect
+    this.spatialGrid.initializePieces(
+      getRandomPieces(piecesNumber, this.worldSize),
+    );
+
+    this.imageAtlas.src = "../../public/puzzle/puzzle_atlas.webp";
 
     this.resizeObserver = new ResizeObserver(([entry]) => {
       if (this.destroyed) return;
@@ -421,8 +439,8 @@ class CanvasRender {
       const cameraZoom = this.camera.getZoom();
       autoPanVelocity = getAutoPanVelocity(
         {
-          startObject: this.startObject,
-          endObject: this.endObject,
+          start: this.startObject,
+          end: this.endObject,
         },
         this.screenSize,
         { zoom: cameraZoom, position: cameraPosition },
@@ -463,6 +481,24 @@ class CanvasRender {
     }
   };
 
+  private drawPiece(pieceId: number) {
+    const piece = this.spatialGrid.getPiece(pieceId);
+
+    const { cell, world } = piece.getDrawPieceInfo();
+
+    this.ctx.drawImage(
+      this.imageAtlas,
+      cell.position.x,
+      cell.position.y,
+      cell.size.width,
+      cell.size.height,
+      world.position.x,
+      world.position.y,
+      world.size.width,
+      world.size.height,
+    );
+  }
+
   private render() {
     const { ctx, canvas, screenSize } = this;
 
@@ -488,13 +524,15 @@ class CanvasRender {
       -cameraPosition.y * scaleY * zoom,
     );
 
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(1000, 1000);
-    ctx.stroke();
+    const visiblePieces = this.spatialGrid.getScreenCut(
+      this.camera.getCameraBoundaries(screenSize),
+    );
+
+    for (const pieceId of visiblePieces) {
+      this.drawPiece(pieceId);
+    }
 
     ctx.fillStyle = "red";
-    ctx.fillRect(500, 500, 200, 200);
     ctx.fillRect(
       this.startObject.x,
       this.startObject.y,

@@ -5,9 +5,16 @@ interface CameraBounds {
   worldSize: Size;
 }
 
+interface CameraBoundaries {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 interface ZoomAnchor {
   screen: Position;
   world: Position;
 }
 
-export type { CameraBounds, ZoomAnchor };
+export type { CameraBounds, ZoomAnchor, CameraBoundaries };

@@ -1,5 +1,5 @@
 import type { Position, Size } from "../types";
-import type { ZoomAnchor, CameraBounds } from "./types";
+import type { ZoomAnchor, CameraBounds, CameraBoundaries } from "./types";
 
 class Camera {
   private position: Position;
@@ -64,6 +64,15 @@ class Camera {
 
   getPosition() {
     return this.position;
+  }
+
+  getCameraBoundaries(screenSize: Size): CameraBoundaries {
+    return {
+      left: this.position.x,
+      top: this.position.y,
+      right: this.position.x + screenSize.width / this.zoom,
+      bottom: this.position.x + screenSize.height / this.zoom,
+    };
   }
 
   getCenter() {

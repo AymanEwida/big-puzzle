@@ -1,8 +1,9 @@
+import type { ObjectPositions } from "./puzzle-pieces/types.ts";
+import Piece from "./puzzle-pieces/piece.ts";
 import type {
   AutoPanInfo,
   CameraInfo,
   ClientBoundings,
-  ObjectInfo,
   Position,
   Size,
 } from "./types.ts";
@@ -69,7 +70,7 @@ function getAxisAutoPanSpeed(
 }
 
 function getAutoPanVelocity(
-  { startObject, endObject }: ObjectInfo,
+  { start: startObject, end: endObject }: ObjectPositions,
   screenSize: Size,
   { position: cameraPosition, zoom }: CameraInfo,
   autoPanInfo: AutoPanInfo,
@@ -97,9 +98,40 @@ function getAutoPanVelocity(
   };
 }
 
+function getRandInt(min: number, max: number): number {
+  const low = Math.ceil(min);
+  const high = Math.floor(max);
+
+  if (!Number.isFinite(low) || !Number.isFinite(high)) {
+    throw new RangeError("getRandInt: min and max must be finite numbers");
+  }
+
+  if (low > high) {
+    throw new RangeError(`getRandInt: no integer in range [${min}, ${max}]`);
+  }
+
+  return Math.floor(Math.random() * (high - low + 1)) + low;
+}
+
+function getRandomPieces(
+  numberOfPieces: number,
+  worldSize: Size,
+): Array<Piece> {
+  return Array.from(
+    { length: numberOfPieces },
+    (_, idx: number) =>
+      new Piece(idx, {
+        x: getRandInt(0, worldSize.width),
+        y: getRandInt(0, worldSize.height),
+      }),
+  );
+}
+
 export {
   clientToScreen,
   screenToWorld,
   getAxisAutoPanSpeed,
   getAutoPanVelocity,
+  getRandInt,
+  getRandomPieces,
 };
