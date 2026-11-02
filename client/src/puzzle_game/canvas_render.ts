@@ -4,10 +4,11 @@ import {
   clientToScreen,
   getAutoPanVelocity,
   getRandomPieces,
+  isCursorInsideObject,
   screenToWorld,
 } from "./utils";
 import SpatialGrid from "./puzzle-pieces/spatial_grid";
-import { chunkSize, piecesNumber } from "./puzzle-pieces/constants";
+import { chunkSize, pieceSize, piecesNumber } from "./puzzle-pieces/constants";
 
 const LEFT_CLICK_BUTTON = 0;
 const RIGHT_CLICK_BUTTON = 2;
@@ -27,6 +28,7 @@ class CanvasRender {
   private resizeObserver: ResizeObserver;
   private resolutionQuery: MediaQueryList | null = null;
   private dragOffset: Position | null = null;
+  private dragedPieceId: number | null = null;
   private readonly autoPanInfo: AutoPanInfo = {
     autoPanRampDistance: 120,
     autoPanMinSpeed: 400,
@@ -34,17 +36,6 @@ class CanvasRender {
   };
   private spatialGrid: SpatialGrid;
   private imageAtlas: HTMLImageElement = new Image();
-
-  // this object for test only, will change later
-  private readonly objectSize: Size = {
-    width: 200,
-    height: 200,
-  };
-  private startObject: Position = { x: 5000, y: 5000 };
-  private endObject: Position = {
-    x: this.startObject.x + this.objectSize.width,
-    y: this.startObject.y + this.objectSize.height,
-  };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -101,8 +92,8 @@ class CanvasRender {
     this.imageAtlas.onload = () => this.requestRender();
   }
 
-  private updateDraggedObject(screenPointer: Position) {
-    if (this.dragOffset === null) {
+  private updateDraggedPiece(screenPointer: Position) {
+    if (this.dragOffset === null || this.dragedPieceId === null) {
       return;
     }
 
@@ -116,18 +107,23 @@ class CanvasRender {
       return;
     }
 
-    const maxX = Math.max(0, this.worldSize.width - this.objectSize.width);
-    const maxY = Math.max(0, this.worldSize.height - this.objectSize.height);
+    const maxX = Math.max(0, this.worldSize.width - pieceSize / 2);
+    const maxY = Math.max(0, this.worldSize.height - pieceSize / 2);
 
-    this.startObject = {
-      x: Math.max(0, Math.min(worldPointer.x - this.dragOffset.x, maxX)),
-      y: Math.max(0, Math.min(worldPointer.y - this.dragOffset.y, maxY)),
+    const newCenter = {
+      x: Math.max(
+        0,
+        Math.min(worldPointer.x - this.dragOffset.x + pieceSize / 2, maxX),
+      ),
+      y: Math.max(
+        0,
+        Math.min(worldPointer.y - this.dragOffset.y + pieceSize / 2, maxY),
+      ),
     };
 
-    this.endObject = {
-      x: this.startObject.x + this.objectSize.width,
-      y: this.startObject.y + this.objectSize.height,
-    };
+    const piece = this.spatialGrid.getPiece(this.dragedPieceId);
+    this.spatialGrid.move(this.dragedPieceId, piece.getCenter(), newCenter);
+    piece.setCenter(newCenter);
   }
 
   private watchResolution = () => {
@@ -208,22 +204,36 @@ class CanvasRender {
         position: cameraPosition,
       });
 
-      const isInsideObject =
-        this.startObject.x <= worldPointer.x &&
-        this.startObject.y <= worldPointer.y &&
-        this.endObject.x >= worldPointer.x &&
-        this.endObject.y >= worldPointer.y;
+      const chunkPieces = this.spatialGrid.getPiecesInChunk(
+        this.spatialGrid.key(worldPointer),
+      );
 
-      if (!isInsideObject) {
-        return;
+      let isInsidePiece = false;
+      for (const pieceId of chunkPieces) {
+        const piece = this.spatialGrid.getPiece(pieceId);
+        const start = piece.getLeftTopPosition();
+        const end = { x: start.x + pieceSize, y: start.y + pieceSize };
+
+        isInsidePiece = isCursorInsideObject({ start, end }, worldPointer);
+
+        if (isInsidePiece) {
+          this.dragOffset = {
+            x: worldPointer.x - start.x,
+            y: worldPointer.y - start.y,
+          };
+
+          this.dragedPieceId = pieceId;
+
+          break;
+        }
       }
 
-      this.dragOffset = {
-        x: worldPointer.x - this.startObject.x,
-        y: worldPointer.y - this.startObject.y,
-      };
+      if (!isInsidePiece) {
+        return;
+      }
     } else {
       this.dragOffset = null;
+      this.dragedPieceId = null;
     }
 
     this.mouseButton = event.button;
@@ -314,7 +324,7 @@ class CanvasRender {
       });
 
       if (screenPointer !== null) {
-        this.updateDraggedObject(screenPointer);
+        this.updateDraggedPiece(screenPointer);
       }
 
       this.requestRender();
@@ -385,6 +395,7 @@ class CanvasRender {
 
     this.mouseButton = null;
     this.dragOffset = null;
+    this.dragedPieceId = null;
 
     if (pointerId !== null && this.canvas.hasPointerCapture(pointerId)) {
       this.canvas.releasePointerCapture(pointerId);
@@ -415,13 +426,14 @@ class CanvasRender {
 
     const bounds = { screenSize: this.screenSize, worldSize: this.worldSize };
 
-    const isDraggingObject =
+    const isDraggingPiece =
       this.pointerId !== null &&
       this.mouseButton === LEFT_CLICK_BUTTON &&
-      this.dragOffset !== null;
+      this.dragOffset !== null &&
+      this.dragedPieceId !== null;
 
     const rect = this.canvas.getBoundingClientRect();
-    const screenPointer = isDraggingObject
+    const screenPointer = isDraggingPiece
       ? clientToScreen(this.lastPointer, this.screenSize, {
           top: rect.top,
           left: rect.left,
@@ -434,15 +446,18 @@ class CanvasRender {
 
     let autoPanVelocity: Position = { x: 0, y: 0 };
 
-    if (screenPointer !== null) {
-      this.updateDraggedObject(screenPointer);
+    if (screenPointer !== null && this.dragedPieceId !== null) {
+      this.updateDraggedPiece(screenPointer);
 
       const cameraPosition = this.camera.getPosition();
       const cameraZoom = this.camera.getZoom();
+      const pieceStart = this.spatialGrid
+        .getPiece(this.dragedPieceId)
+        .getLeftTopPosition();
       autoPanVelocity = getAutoPanVelocity(
         {
-          start: this.startObject,
-          end: this.endObject,
+          start: pieceStart,
+          end: { x: pieceStart.x + pieceSize, y: pieceStart.y + pieceSize },
         },
         this.screenSize,
         { zoom: cameraZoom, position: cameraPosition },
@@ -469,7 +484,7 @@ class CanvasRender {
       cameraPreviousPosition.y !== cameraCurrentPosition.y;
 
     if (screenPointer !== null) {
-      this.updateDraggedObject(screenPointer);
+      this.updateDraggedPiece(screenPointer);
     }
 
     this.render();
@@ -533,14 +548,6 @@ class CanvasRender {
     for (const pieceId of visiblePieces) {
       this.drawPiece(pieceId);
     }
-
-    ctx.fillStyle = "red";
-    ctx.fillRect(
-      this.startObject.x,
-      this.startObject.y,
-      this.objectSize.width,
-      this.objectSize.height,
-    );
 
     ctx.restore();
 

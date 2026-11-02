@@ -21,6 +21,25 @@ class Piece {
     return this.id;
   }
 
+  getLeftTopPosition(): Position {
+    return {
+      x: this.center.x - pieceSize / 2,
+      y: this.center.y - pieceSize / 2,
+    };
+  }
+
+  getCenter() {
+    return this.center;
+  }
+
+  setCenter(newCenter: Position) {
+    this.center = newCenter;
+  }
+
+  getGroupId() {
+    return this.groupId;
+  }
+
   getDrawPieceInfo(): {
     cell: { position: Position; size: Size };
     world: { position: Position; size: Size };
@@ -44,14 +63,6 @@ class Piece {
         size: { width: cellSize, height: cellSize },
       },
     };
-  }
-
-  getCenter() {
-    return this.center;
-  }
-
-  getGroupId() {
-    return this.groupId;
   }
 }
 

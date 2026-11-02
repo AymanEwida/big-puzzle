@@ -128,6 +128,18 @@ function getRandomPieces(
   );
 }
 
+function isCursorInsideObject(
+  { start, end }: ObjectPositions,
+  cursorPosition: Position,
+): boolean {
+  return (
+    start.x <= cursorPosition.x &&
+    start.y <= cursorPosition.y &&
+    end.x >= cursorPosition.x &&
+    end.y >= cursorPosition.y
+  );
+}
+
 export {
   clientToScreen,
   screenToWorld,
@@ -135,4 +147,5 @@ export {
   getAutoPanVelocity,
   getRandInt,
   getRandomPieces,
+  isCursorInsideObject,
 };

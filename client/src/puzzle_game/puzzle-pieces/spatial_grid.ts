@@ -24,6 +24,10 @@ class SpatialGrid {
     return this.pieces[id];
   }
 
+  getPiecesInChunk(checkIdx: number): Set<number> {
+    return this.chunksGrid[checkIdx];
+  }
+
   key(position: Position) {
     return (
       Math.floor(position.y / chunkSize) * this.cols +
@@ -46,8 +50,10 @@ class SpatialGrid {
     const oldKey = this.key(oldPosition);
     const newKey = this.key(newPosition);
 
-    this.chunksGrid[oldKey].delete(pieceId);
-    this.chunksGrid[newKey].add(pieceId);
+    if (oldKey !== newKey) {
+      this.chunksGrid[oldKey].delete(pieceId);
+      this.chunksGrid[newKey].add(pieceId);
+    }
   }
 
   getScreenCut({ left, top, right, bottom }: CameraBoundaries): number[] {
