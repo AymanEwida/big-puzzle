@@ -7,6 +7,7 @@ import type {
   Position,
   Size,
 } from "./types.ts";
+import { pieceSize } from "./puzzle-pieces/constants.ts";
 
 function clientToScreen(
   clientPosition: Position,
@@ -121,8 +122,8 @@ function getRandomPieces(
     { length: numberOfPieces },
     (_, idx: number) =>
       new Piece(idx, {
-        x: getRandInt(0, worldSize.width),
-        y: getRandInt(0, worldSize.height),
+        x: getRandInt(pieceSize / 2, worldSize.width - pieceSize / 2),
+        y: getRandInt(pieceSize / 2, worldSize.height - pieceSize / 2),
       }),
   );
 }

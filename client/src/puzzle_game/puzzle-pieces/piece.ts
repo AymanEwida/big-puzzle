@@ -25,11 +25,11 @@ class Piece {
     cell: { position: Position; size: Size };
     world: { position: Position; size: Size };
   } {
-    const left = this.center.x - pieceSize;
-    const top = this.center.y - pieceSize;
+    const left = this.center.x - pieceSize / 2;
+    const top = this.center.y - pieceSize / 2;
 
     const sx = (this.id % atlasImageCols) * cellSize;
-    const sy = (this.id / atlasImageCols) * cellSize;
+    const sy = Math.floor(this.id / atlasImageCols) * cellSize;
 
     return {
       cell: {

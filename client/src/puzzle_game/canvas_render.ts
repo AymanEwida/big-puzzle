@@ -72,7 +72,7 @@ class CanvasRender {
       getRandomPieces(piecesNumber, this.worldSize),
     );
 
-    this.imageAtlas.src = "../../public/puzzle/puzzle_atlas.webp";
+    this.imageAtlas.src = "/puzzle/puzzle_atlas.webp";
 
     this.resizeObserver = new ResizeObserver(([entry]) => {
       if (this.destroyed) return;
@@ -97,6 +97,8 @@ class CanvasRender {
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
     canvas.addEventListener("contextmenu", this.onContextMenu);
     window.addEventListener("blur", this.onBlur);
+
+    this.imageAtlas.onload = () => this.requestRender();
   }
 
   private updateDraggedObject(screenPointer: Position) {

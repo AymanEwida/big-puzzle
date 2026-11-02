@@ -71,7 +71,7 @@ class Camera {
       left: this.position.x,
       top: this.position.y,
       right: this.position.x + screenSize.width / this.zoom,
-      bottom: this.position.x + screenSize.height / this.zoom,
+      bottom: this.position.y + screenSize.height / this.zoom,
     };
   }
 
