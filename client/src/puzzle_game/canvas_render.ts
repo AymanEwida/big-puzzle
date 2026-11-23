@@ -1,4 +1,10 @@
-import type { AutoPanInfo, Position, Size } from "./types";
+import type {
+  AutoPanInfo,
+  DrawDevModeInfoArgs,
+  FunctionRuntime,
+  Position,
+  Size,
+} from "./types";
 import Camera from "./camera/camera";
 import {
   clientToScreen,
@@ -13,20 +19,29 @@ import { chunkSize, pieceSize, piecesNumber } from "./puzzle-pieces/constants";
 const LEFT_CLICK_BUTTON = 0;
 const RIGHT_CLICK_BUTTON = 2;
 
+// TODO: add a button for zoom in and out
+// TODO: fix the performance issues when zooming out and panning
 class CanvasRender {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private destroyed = false;
+
   private screenSize: Size; // CSS pixels not bitmap resolution.
   private worldSize: Size = { width: 16000, height: 16000 };
   private camera: Camera;
+
   private pointerId: number | null = null;
   private lastPointer: Position = { x: 0, y: 0 };
   private mouseButton: number | null = null;
+
   private frameId: number | null = null;
   private previousTime: number | null = null;
-  private destroyed = false;
+  private fps: number = 0;
+  private renderTime: number = 0;
+
   private resizeObserver: ResizeObserver;
   private resolutionQuery: MediaQueryList | null = null;
+
   private dragOffset: Position | null = null;
   private dragedPieceId: number | null = null;
   private readonly autoPanInfo: AutoPanInfo = {
@@ -34,6 +49,7 @@ class CanvasRender {
     autoPanMinSpeed: 400,
     autoPanMaxSpeed: 600,
   };
+
   private spatialGrid: SpatialGrid;
   private imageAtlas: HTMLImageElement = new Image();
 
@@ -124,6 +140,8 @@ class CanvasRender {
     const piece = this.spatialGrid.getPiece(this.dragedPieceId);
     this.spatialGrid.move(this.dragedPieceId, piece.getCenter(), newCenter);
     piece.setCenter(newCenter);
+
+    // TODO: send query to server to update piece position
   }
 
   private watchResolution = () => {
@@ -417,6 +435,14 @@ class CanvasRender {
       return;
     }
 
+    if (this.previousTime !== null) {
+      const delta = (time - this.previousTime) / 1000;
+      const currentFPS = 1 / delta;
+
+      this.fps =
+        this.fps === 0 ? currentFPS : 0.9 * this.fps + 0.1 * currentFPS;
+    }
+
     const deltaSeconds =
       this.previousTime === null
         ? 1 / 60
@@ -487,7 +513,14 @@ class CanvasRender {
       this.updateDraggedPiece(screenPointer);
     }
 
+    const start = performance.now();
     this.render();
+    const end = performance.now();
+    const elapsedTime = end - start;
+    this.renderTime =
+      this.renderTime === 0
+        ? elapsedTime
+        : 0.9 * this.renderTime + 0.1 * elapsedTime;
 
     const autoPanRequested = autoPanVelocity.x !== 0 || autoPanVelocity.y !== 0;
 
@@ -516,6 +549,94 @@ class CanvasRender {
     );
   }
 
+  private drawDevModeInfo({ performance }: DrawDevModeInfoArgs) {
+    const ctx = this.ctx;
+
+    const cameraPosition = this.camera.getPosition();
+    const cameraCenter = this.camera.getCenter();
+
+    const cameraLines = [
+      `center: (x: ${Math.round(cameraCenter.x)}, y: ${Math.round(cameraCenter.y)})`,
+      `top left: (x: ${Math.round(cameraPosition.x)}, y: ${Math.round(cameraPosition.y)})`,
+      `zoom: ${this.camera.getZoom().toFixed(2)}`,
+    ];
+
+    const performanceLines = [
+      `FPS: ${this.fps.toFixed(0)}`,
+      `render time: ${this.renderTime.toFixed(3)}ms`,
+      ...performance.functionsRuntime.map(
+        (functionRuntime: FunctionRuntime) =>
+          `${functionRuntime.title} time: ${functionRuntime.time.toFixed(3)}ms`,
+      ),
+    ];
+
+    const generalLines = [
+      `dragged pieceId: ${this.dragedPieceId ?? "None"}`,
+      `screen width: ${this.screenSize.width}`,
+      `screen height: ${this.screenSize.height}`,
+    ];
+
+    const sections = [
+      { title: "Camera", lines: cameraLines },
+      { title: "Performance", lines: performanceLines },
+      { title: "General", lines: generalLines },
+    ];
+
+    const fontSize = 48;
+    const lineHeight = 70;
+    const padding = 16;
+    const margin = 10;
+    const columnGap = 48;
+    const titleFont = `bold ${fontSize}px serif`;
+    const textFont = `${fontSize}px serif`;
+
+    ctx.textBaseline = "top";
+
+    const columnWidths = sections.map(({ title, lines }) => {
+      ctx.font = titleFont;
+      let width = ctx.measureText(title).width;
+      ctx.font = textFont;
+
+      for (const line of lines) {
+        width = Math.max(width, ctx.measureText(line).width);
+      }
+
+      return width;
+    });
+
+    const maxRows = 1 + Math.max(...sections.map(({ lines }) => lines.length));
+
+    const boxWidth =
+      columnWidths.reduce((sum, w) => sum + w, 0) +
+      columnGap * (sections.length - 1) +
+      padding * 2;
+    const boxHeight =
+      maxRows * lineHeight - (lineHeight - fontSize) + padding * 2;
+    const boxX = margin;
+    const boxY = this.canvas.height - margin - boxHeight;
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+    ctx.fillStyle = "white";
+    let columnX = boxX + padding;
+    sections.forEach(({ title, lines }, i) => {
+      const top = boxY + padding;
+
+      ctx.font = titleFont;
+      ctx.fillText(title, columnX, top);
+
+      ctx.font = textFont;
+      lines.forEach((line, row) => {
+        ctx.fillText(line, columnX, top + (row + 1) * lineHeight);
+      });
+
+      columnX += columnWidths[i] + columnGap;
+    });
+
+    ctx.textBaseline = "alphabetic";
+  }
+
   private render() {
     const { ctx, canvas, screenSize } = this;
 
@@ -541,31 +662,39 @@ class CanvasRender {
       -cameraPosition.y * scaleY * zoom,
     );
 
+    let start: number;
+    let end: number;
+
+    start = performance.now();
     const visiblePieces = this.spatialGrid.getScreenCut(
       this.camera.getCameraBoundaries(screenSize),
     );
+    end = performance.now();
+    const getScreenCutElapsedTime = end - start;
 
+    start = performance.now();
     for (const pieceId of visiblePieces) {
       this.drawPiece(pieceId);
     }
+    end = performance.now();
+    const drawAllPiecesElapsedTime = end - start;
 
     ctx.restore();
 
-    const cameraCenter = this.camera.getCenter();
-
-    ctx.font = "48px serif";
-
-    ctx.fillText(
-      `center: (x: ${Math.round(cameraCenter.x)}, y: ${Math.round(cameraCenter.y)})`,
-      10,
-      this.canvas.height - 100,
-    );
-
-    ctx.fillText(
-      `top left: (x: ${Math.round(cameraPosition.x)}, y: ${Math.round(cameraPosition.y)})`,
-      10,
-      this.canvas.height - 30,
-    );
+    this.drawDevModeInfo({
+      performance: {
+        functionsRuntime: [
+          {
+            title: "getScreenCut",
+            time: getScreenCutElapsedTime,
+          },
+          {
+            title: "drawAllPieces",
+            time: drawAllPiecesElapsedTime,
+          },
+        ],
+      },
+    });
   }
 
   destroy() {

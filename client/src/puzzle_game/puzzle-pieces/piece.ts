@@ -9,7 +9,7 @@ import {
 class Piece {
   private id: number;
   private center: Position;
-  private groupId: number;
+  private groupId: number; // TODO: add Group class that holds the pieces that are in one group
 
   constructor(id: number, center: Position) {
     this.id = id;

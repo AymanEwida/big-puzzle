@@ -31,6 +31,19 @@ interface AutoPanInfo {
   autoPanMaxSpeed: number;
 }
 
+interface FunctionRuntime {
+  title: string;
+  time: number; // in milliseconds
+}
+
+interface PerformanceType {
+  functionsRuntime: FunctionRuntime[];
+}
+
+interface DrawDevModeInfoArgs {
+  performance: PerformanceType;
+}
+
 export type {
   Size,
   Position,
@@ -38,4 +51,7 @@ export type {
   ClientBoundings,
   CameraInfo,
   AutoPanInfo,
+  DrawDevModeInfoArgs,
+  PerformanceType,
+  FunctionRuntime,
 };
